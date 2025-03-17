@@ -82,7 +82,7 @@ app.post('/create-checkout-session', async (req, res) => {
   try {
     console.log('Criando sessão no Stripe com Stripe Secret Key:', process.env.STRIPE_SECRET_KEY.substring(0, 4) + '...');
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card', 'boleto', 'pix'], // Adicione os métodos desejados
+      payment_method_types: ['card'], // Adicione os métodos desejados
       line_items: [
         {
           price: priceId,
@@ -94,11 +94,7 @@ app.post('/create-checkout-session', async (req, res) => {
       cancel_url: `${process.env.FRONTEND_URL}dashboard?canceled=true`,
       metadata: { userId, customUrl, siteId, plan },
       currency: 'brl', // Certifique-se de que a moeda é BRL para Pix e Boleto
-      payment_method_options: {
-        boleto: {
-          expires_after_days: 3, // Define o prazo de validade do boleto (opcional)
-        },
-      },
+      
     });
     console.log('Sessão criada com sucesso. Session ID:', session.id);
     console.log('URLs de redirecionamento:', { success_url: session.success_url, cancel_url: session.cancel_url });
