@@ -80,9 +80,9 @@ app.post('/create-checkout-session', async (req, res) => {
   console.log('Price ID selecionado:', priceId);
 
   try {
-    console.log('Criando sessão no Stripe...');
+    console.log('Criando sessão no Stripe com Stripe Secret Key:', process.env.STRIPE_SECRET_KEY.substring(0, 4) + '...');
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
+      payment_method_types: ['card', 'boleto', 'pix'], // Adicione os métodos desejados
       line_items: [
         {
           price: priceId,
@@ -93,14 +93,22 @@ app.post('/create-checkout-session', async (req, res) => {
       success_url: `${process.env.FRONTEND_URL}dashboard?success=true&siteId=${siteId}`,
       cancel_url: `${process.env.FRONTEND_URL}dashboard?canceled=true`,
       metadata: { userId, customUrl, siteId, plan },
+      currency: 'brl', // Certifique-se de que a moeda é BRL para Pix e Boleto
+      payment_method_options: {
+        boleto: {
+          expires_after_days: 3, // Define o prazo de validade do boleto (opcional)
+        },
+      },
     });
-    console.log('Sessão criada com sucesso:', session.id);
+    console.log('Sessão criada com sucesso. Session ID:', session.id);
+    console.log('URLs de redirecionamento:', { success_url: session.success_url, cancel_url: session.cancel_url });
 
     res.json({ sessionId: session.id });
   } catch (error) {
-    console.error('Erro ao criar sessão de checkout:', error.message);
-    res.status(500).json({ error: 'Erro ao criar sessão de checkout' });
+    console.error('Erro ao criar sessão de checkout:', error.message, error.stack);
+    res.status(500).json({ error: 'Erro ao criar sessão de checkout', details: error.message });
   }
+});
 });
 
 app.listen(3000, () => console.log('Server running on port 3000'));
