@@ -109,6 +109,6 @@ app.post('/create-checkout-session', async (req, res) => {
     res.status(500).json({ error: 'Erro ao criar sessão de checkout', details: error.message });
   }
 });
-});
+
 
 app.listen(3000, () => console.log('Server running on port 3000'));
