@@ -76,7 +76,7 @@ app.post('/create-checkout-session', async (req, res) => {
   const { userId, customUrl, plan, siteId } = req.body;
   console.log('Dados recebidos:', { userId, customUrl, plan, siteId });
 
-  const priceId = plan === 'basic' ? 'price_1R3fQT2SGGWMqI5OWLmp2uYI' : 'price_1R3Vot2SGGWMqI5OumMosWmL';
+  const priceId = plan === 'basic' ? 'price_1R3j3ME7ALxB5NeWiBpb4IAo' : 'price_1R3j3rE7ALxB5NeW3ff6tK6c';
   console.log('Price ID selecionado:', priceId);
 
   try {
