@@ -90,8 +90,8 @@ app.post('/create-checkout-session', async (req, res) => {
         },
       ],
       mode: 'payment',
-      success_url: `${process.env.FRONTEND_URL}/dashboard?success=true&siteId=${siteId}`,
-      cancel_url: `${process.env.FRONTEND_URL}/dashboard?canceled=true`,
+      success_url: `${process.env.FRONTEND_URL}dashboard?success=true&siteId=${siteId}`,
+      cancel_url: `${process.env.FRONTEND_URL}dashboard?canceled=true`,
       metadata: { userId, customUrl, siteId, plan },
     });
     console.log('Sessão criada com sucesso:', session.id);
