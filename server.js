@@ -12,8 +12,9 @@ const cors = require('cors');
 
 app.use(cors());
 
-// Middleware para JSON apenas para /create-checkout-session
+// Middleware para JSON apenas para /create-checkout-session e /send-email
 app.use('/create-checkout-session', express.json());
+app.use('/send-email', express.json());
 
 // Webhook com corpo bruto
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
@@ -303,6 +304,46 @@ app.post('/create-checkout-session', async (req, res) => {
   } catch (error) {
     console.error('Erro ao criar sessão de checkout:', error.message, error.stack);
     res.status(500).json({ error: 'Erro ao criar sessão de checkout', details: error.message });
+  }
+});
+
+// Novo endpoint para envio de e-mail manual
+app.post('/send-email', async (req, res) => {
+  console.log('Recebida requisição para /send-email');
+  const { to, subject, body } = req.body;
+
+  if (!to || !subject || !body) {
+    console.log('Campos obrigatórios ausentes:', { to, subject, body });
+    return res.status(400).json({ error: 'Todos os campos (to, subject, body) são obrigatórios.' });
+  }
+
+  // Configurar o transporte de e-mail com HostGator
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.titan.email',
+    port: 465,
+    secure: true,
+    auth: {
+      user: 'administrador@amorempixels.com',
+      pass: process.env.HOSTGATOR_EMAIL_PASSWORD,
+    },
+  });
+
+  const mailOptions = {
+    from: 'administrador@amorempixels.com',
+    to,
+    subject,
+    text: body,
+    html: `<p>${body.replace(/\n/g, '<br>')}</p>`,
+  };
+
+  try {
+    console.log('Enviando e-mail para:', to);
+    await transporter.sendMail(mailOptions);
+    console.log('E-mail enviado com sucesso');
+    res.status(200).json({ message: 'E-mail enviado com sucesso!' });
+  } catch (error) {
+    console.error('Erro ao enviar e-mail:', error);
+    res.status(500).json({ error: 'Falha ao enviar o e-mail.' });
   }
 });
 
