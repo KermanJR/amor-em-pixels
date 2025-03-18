@@ -2,6 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { createClient } = require('@supabase/supabase-js');
+const nodemailer = require('nodemailer');
+const pdf = require('html-pdf');
+const QRCode = require('qrcode');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const app = express();
@@ -31,19 +34,217 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
   if (event.type === 'checkout.session.completed') {
     console.log('Evento checkout.session.completed recebido');
     const session = event.data.object;
-    const { userId, siteId, plan } = session.metadata;
-    console.log('Metadados do evento:', { userId, siteId, plan });
+    const { userId, siteId, plan, customUrl, email } = session.metadata;
+    console.log('Metadados do evento:', { userId, siteId, plan, customUrl, email });
 
-    // Atualizar o status do site para 'active' após o pagamento
-    console.log('Atualizando status do site no Supabase...');
-    const { error: siteError } = await supabase
+    // Buscar os dados do site no Supabase
+    console.log('Buscando dados do site no Supabase...');
+    const { data: siteData, error: siteError } = await supabase
+      .from('sites')
+      .select('form_data, password, custom_url, media')
+      .eq('id', siteId)
+      .single();
+
+    if (siteError) {
+      console.error('Erro ao buscar dados do site:', siteError);
+      return res.status(500).send('Erro ao buscar dados do site');
+    }
+
+    const { form_data, password, custom_url, media } = siteData;
+    const siteUrl = `${process.env.FRONTEND_URL}/${customUrl}`;
+    const selectedPhoto = media.photos && media.photos.length > 0 ? media.photos[0] : 'https://via.placeholder.com/300x200?text=Sem+Foto';
+    const selectedColor = '#FDF8E3'; // Cor padrão, ajuste conforme necessário
+
+    // Gerar o QR Code
+    const qrCodeUrl = await QRCode.toDataURL(siteUrl);
+
+    // Criar o template HTML para o PDF
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Card Digital Premium - ${form_data.coupleName}</title>
+        <style>
+          /* Estilos do template premium */
+          body {
+            background-color: ${selectedColor};
+            font-family: 'Georgia', serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+          }
+          .card {
+            background-color: white;
+            border-radius: 24px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 600px;
+            padding: 32px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+          }
+          .card::before {
+            content: '';
+            position: absolute;
+            top: -50px;
+            left: -50px;
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(255, 215, 0, 0.2) 0%, transparent 70%);
+            z-index: 0;
+          }
+          .card::after {
+            content: '';
+            position: absolute;
+            bottom: -50px;
+            right: -50px;
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(255, 215, 0, 0.2) 0%, transparent 70%);
+            z-index: 0;
+          }
+          .card img.photo {
+            width: 100%;
+            max-height: 300px;
+            object-fit: cover;
+            border-radius: 16px;
+            margin-bottom: 24px;
+            position: relative;
+            z-index: 1;
+          }
+          .card h1 {
+            font-size: 32px;
+            color: #872133;
+            margin-bottom: 16px;
+            font-weight: bold;
+            position: relative;
+            z-index: 1;
+          }
+          .card p.message {
+            font-size: 18px;
+            color: #6B1A28;
+            font-style: italic;
+            margin-bottom: 24px;
+            position: relative;
+            z-index: 1;
+          }
+          .card .details {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            position: relative;
+            z-index: 1;
+            text-align: center;
+          }
+          .card .details p {
+            font-size: 16px;
+            color: #555;
+            margin: 0 auto;
+            text-align: center;
+          }
+          .card .qr-code {
+            margin-top: 24px;
+            position: relative;
+            z-index: 1;
+          }
+          .card .qr-code img {
+            width: 100px;
+            height: 100px;
+            margin-bottom: 8px;
+          }
+          .card .qr-code p {
+            font-size: 14px;
+            color: #555;
+          }
+          @media print {
+            body {
+              background-color: white;
+            }
+            .card {
+              box-shadow: none;
+              border: 1px solid #ddd;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <img class="photo" src="${selectedPhoto}" alt="Foto do Casal" />
+          <h1>${form_data.coupleName}</h1>
+          <p class="message">"${form_data.message}"</p>
+          <div class="details">
+            <p>Início: ${new Date(form_data.relationshipStartDate).toLocaleDateString('pt-BR')}</p>
+          </div>
+          <div class="qr-code">
+            <img src="${qrCodeUrl}" alt="QR Code" />
+            <p>Escaneie para visitar nosso Card Digital</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Configurar o transporte de e-mail com HostGator
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.titan.email', // Substitua pelo seu domínio HostGator
+      port: 465, // Ou 587 para TLS
+      secure: true, // true para 465, false para outras portas
+      auth: {
+        user: 'administrador@amorempixels.com', // Seu e-mail HostGator
+        pass: process.env.HOSTGATOR_EMAIL_PASSWORD, // Senha do e-mail (adicione ao .env)
+      },
+    });
+
+    // Gerar o PDF (se for plano Premium)
+    let pdfBuffer = null;
+    if (plan === 'premium') {
+      pdfBuffer = await new Promise((resolve, reject) => {
+        pdf.create(htmlContent, { format: 'A4' }).toBuffer((err, buffer) => {
+          if (err) reject(err);
+          else resolve(buffer);
+        });
+      });
+    }
+
+    // Enviar o e-mail
+    const mailOptions = {
+      from: 'administrador@amorempixels.com',
+      to: email,
+      subject: 'Seu Card Digital foi Criado com Sucesso!',
+      html: `
+        <h1>Seu Card Digital está pronto!</h1>
+        <p>Acesse seu Card Digital aqui: <a href="${siteUrl}">${siteUrl}</a></p>
+        <p><strong>Senha para acesso:</strong> ${password}</p>
+        <p>Para gerenciar seu card, crie uma conta em: <a href="${process.env.FRONTEND_URL}/login">Fazer Login</a></p>
+        ${plan === 'premium' ? '<p>Baixe seu PDF personalizado anexado a este e-mail.</p>' : ''}
+      `,
+      attachments: plan === 'premium'
+        ? [{
+            filename: `${customUrl}_card.pdf`,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          }]
+        : [],
+    };
+
+    console.log('Enviando e-mail...');
+    await transporter.sendMail(mailOptions);
+    console.log('E-mail enviado com sucesso para:', email);
+
+    // Atualizar o status do site para 'active'
+    const { error: updateError } = await supabase
       .from('sites')
       .update({ status: 'active' })
       .eq('id', siteId)
       .eq('user_id', userId);
 
-    if (siteError) {
-      console.error('Erro ao atualizar status do site:', siteError);
+    if (updateError) {
+      console.error('Erro ao atualizar status do site:', updateError);
       return res.status(500).send('Erro ao atualizar o site');
     }
 
@@ -73,8 +274,8 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 // Endpoint para criar a sessão de checkout
 app.post('/create-checkout-session', async (req, res) => {
   console.log('Recebida requisição para /create-checkout-session');
-  const { userId, customUrl, plan, siteId } = req.body;
-  console.log('Dados recebidos:', { userId, customUrl, plan, siteId });
+  const { userId, customUrl, plan, siteId, email } = req.body; // Adicionando email
+  console.log('Dados recebidos:', { userId, customUrl, plan, siteId, email });
 
   const priceId = plan === 'basic' ? 'price_1R3j3ME7ALxB5NeWiBpb4IAo' : 'price_1R3j3rE7ALxB5NeW3ff6tK6c';
   console.log('Price ID selecionado:', priceId);
@@ -92,9 +293,8 @@ app.post('/create-checkout-session', async (req, res) => {
       mode: 'payment',
       success_url: `${process.env.FRONTEND_URL}dashboard?success=true&siteId=${siteId}`,
       cancel_url: `${process.env.FRONTEND_URL}dashboard?canceled=true`,
-      metadata: { userId, customUrl, siteId, plan },
+      metadata: { userId, customUrl, siteId, plan, email },
       currency: 'brl', // Certifique-se de que a moeda é BRL para Pix e Boleto
-      
     });
     console.log('Sessão criada com sucesso. Session ID:', session.id);
     console.log('URLs de redirecionamento:', { success_url: session.success_url, cancel_url: session.cancel_url });
@@ -105,6 +305,5 @@ app.post('/create-checkout-session', async (req, res) => {
     res.status(500).json({ error: 'Erro ao criar sessão de checkout', details: error.message });
   }
 });
-
 
 app.listen(3000, () => console.log('Server running on port 3000'));
