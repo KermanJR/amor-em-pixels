@@ -308,16 +308,16 @@ app.post('/create-checkout-session', async (req, res) => {
 });
 
 // Novo endpoint para envio de e-mail manual
+// No arquivo backend (ex.: index.js)
 app.post('/send-email', async (req, res) => {
   console.log('Recebida requisição para /send-email');
-  const { to, subject, body } = req.body;
+  const { to, subject, body, isHtml = false } = req.body;
 
   if (!to || !subject || !body) {
     console.log('Campos obrigatórios ausentes:', { to, subject, body });
     return res.status(400).json({ error: 'Todos os campos (to, subject, body) são obrigatórios.' });
   }
 
-  // Configurar o transporte de e-mail com HostGator
   const transporter = nodemailer.createTransport({
     host: 'smtp.titan.email',
     port: 465,
@@ -332,8 +332,7 @@ app.post('/send-email', async (req, res) => {
     from: 'administrador@amorempixels.com',
     to,
     subject,
-    text: body,
-    html: `<p>${body.replace(/\n/g, '<br>')}</p>`,
+    ...(isHtml ? { html: body } : { text: body }), // Usa html se isHtml for true, senão text
   };
 
   try {
