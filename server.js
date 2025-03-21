@@ -106,7 +106,7 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
       return res.status(500).send('Erro ao criar o site');
     }
 
-    const siteUrl = `${process.env.FRONTEND_URL}/${siteData.custom_url}`;
+    const siteUrl = `${process.env.FRONTEND_URL}${siteData.custom_url}`;
     const selectedPhoto = photoUrls.length > 0 ? photoUrls[0] : 'https://via.placeholder.com/300x200?text=Sem+Foto';
     const selectedColor = '#FDF8E3';
 
@@ -327,8 +327,8 @@ app.post('/create-checkout-session', async (req, res) => {
         },
       ],
       mode: 'payment',
-      success_url: `${process.env.FRONTEND_URL}/confirmation?success=true`,
-      cancel_url: `${process.env.FRONTEND_URL}/criar?canceled=true`,
+      success_url: `${process.env.FRONTEND_URL}confirmation?success=true`,
+      cancel_url: `${process.env.FRONTEND_URL}criar?canceled=true`,
       metadata: {
         userId: userId || null,
         customUrl,
