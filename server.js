@@ -12,19 +12,15 @@ const cors = require('cors');
 
 app.use(cors());
 
-// Middleware para JSON apenas para /create-checkout-session e /send-email
 app.use('/create-checkout-session', express.json());
 app.use('/send-email', express.json());
 
-// Webhook com corpo bruto
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   console.log('Recebida requisição para /webhook');
-  console.log('Tipo do req.body:', typeof req.body); // Depuração: verifica se é Buffer
   const sig = req.headers['stripe-signature'];
   let event;
 
   try {
-    console.log('Verificando assinatura do webhook...');
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
     console.log('Evento verificado:', event.type);
   } catch (err) {
@@ -36,10 +32,7 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
     console.log('Evento checkout.session.completed recebido');
     const session = event.data.object;
     const { userId, siteId, plan, customUrl, email } = session.metadata;
-    console.log('Metadados do evento:', { userId, siteId, plan, customUrl, email });
 
-    // Buscar os dados do site no Supabase
-    console.log('Buscando dados do site no Supabase...');
     const { data: siteData, error: siteError } = await supabase
       .from('sites')
       .select('form_data, password, custom_url, media')
@@ -54,12 +47,10 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
     const { form_data, password, custom_url, media } = siteData;
     const siteUrl = `${process.env.FRONTEND_URL}/${customUrl}`;
     const selectedPhoto = media.photos && media.photos.length > 0 ? media.photos[0] : 'https://via.placeholder.com/300x200?text=Sem+Foto';
-    const selectedColor = '#FDF8E3'; // Cor padrão, ajuste conforme necessário
+    const selectedColor = '#FDF8E3';
 
-    // Gerar o QR Code
     const qrCodeUrl = await QRCode.toDataURL(siteUrl);
 
-    // Criar o template HTML para o PDF
     const htmlContent = `
       <!DOCTYPE html>
       <html lang="pt-BR">
@@ -68,7 +59,6 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Card Digital Premium - ${form_data.coupleName}</title>
         <style>
-          /* Estilos do template premium */
           body {
             background-color: ${selectedColor};
             font-family: 'Georgia', serif;
@@ -190,18 +180,16 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
       </html>
     `;
 
-    // Configurar o transporte de e-mail com HostGator
     const transporter = nodemailer.createTransport({
-      host: 'smtp.titan.email', // Substitua pelo seu domínio HostGator
-      port: 465, // Ou 587 para TLS
-      secure: true, // true para 465, false para outras portas
+      host: 'smtp.titan.email',
+      port: 465,
+      secure: true,
       auth: {
-        user: 'administrador@amorempixels.com', // Seu e-mail HostGator
-        pass: process.env.HOSTGATOR_EMAIL_PASSWORD, // Senha do e-mail (adicione ao .env)
+        user: 'administrador@amorempixels.com',
+        pass: process.env.HOSTGATOR_EMAIL_PASSWORD,
       },
     });
 
-    // Gerar o PDF (se for plano Premium)
     let pdfBuffer = null;
     if (plan === 'premium') {
       pdfBuffer = await new Promise((resolve, reject) => {
@@ -212,7 +200,6 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
       });
     }
 
-    // Enviar o e-mail
     const mailOptions = {
       from: 'administrador@amorempixels.com',
       to: email,
@@ -221,7 +208,6 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
         <h1>Seu Card Digital está pronto!</h1>
         <p>Acesse seu Card Digital aqui: <a href="${siteUrl}">${siteUrl}</a></p>
         <p><strong>Senha para acesso:</strong> ${password}</p>
-        <p>Para gerenciar seu card, crie uma conta em: <a href="${process.env.FRONTEND_URL}/login">Fazer Login</a></p>
         ${plan === 'premium' ? '<p>Baixe seu PDF personalizado anexado a este e-mail.</p>' : ''}
       `,
       attachments: plan === 'premium'
@@ -233,38 +219,21 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
         : [],
     };
 
-    console.log('Enviando e-mail...');
     await transporter.sendMail(mailOptions);
     console.log('E-mail enviado com sucesso para:', email);
 
-    // Atualizar o status do site para 'active'
     const { error: updateError } = await supabase
       .from('sites')
       .update({ status: 'active' })
-      .eq('id', siteId)
-      .eq('user_id', userId);
+      .eq('id', siteId);
 
     if (updateError) {
       console.error('Erro ao atualizar status do site:', updateError);
       return res.status(500).send('Erro ao atualizar o site');
     }
 
-    // Atualizar ou criar o plano do usuário
-    console.log('Atualizando plano do usuário no Supabase...');
-    const { error: planError } = await supabase
-      .from('user_plans')
-      .upsert({
-        user_id: userId,
-        package_type: plan,
-        purchase_date: new Date().toISOString(),
-      });
-
-    if (planError) {
-      console.error('Erro ao atualizar plano do usuário:', planError);
-      return res.status(500).send('Erro ao atualizar o plano');
-    }
-
-    console.log(`Site ${siteId} ativado com sucesso para o usuário ${userId}`);
+    // Removido o upsert de user_plans, pois não há usuário logado
+    console.log(`Site ${siteId} ativado com sucesso`);
   } else {
     console.log(`Evento ignorado: ${event.type}`);
   }
@@ -272,19 +241,16 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
   res.status(200).json({ received: true });
 });
 
-// Endpoint para criar a sessão de checkout
 app.post('/create-checkout-session', async (req, res) => {
   console.log('Recebida requisição para /create-checkout-session');
-  const { userId, customUrl, plan, siteId, email } = req.body; // Adicionando email
-  console.log('Dados recebidos:', { userId, customUrl, plan, siteId, email });
+  const { userId, customUrl, plan, siteId, email } = req.body;
 
   const priceId = plan === 'basic' ? 'price_1R3j3ME7ALxB5NeWiBpb4IAo' : 'price_1R3j3rE7ALxB5NeW3ff6tK6c';
   console.log('Price ID selecionado:', priceId);
 
   try {
-    console.log('Criando sessão no Stripe com Stripe Secret Key:', process.env.STRIPE_SECRET_KEY.substring(0, 4) + '...');
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'], // Adicione os métodos desejados
+      payment_method_types: ['card'],
       line_items: [
         {
           price: priceId,
@@ -292,13 +258,11 @@ app.post('/create-checkout-session', async (req, res) => {
         },
       ],
       mode: 'payment',
-      success_url: `${process.env.FRONTEND_URL}dashboard?success=true&siteId=${siteId}`,
-      cancel_url: `${process.env.FRONTEND_URL}dashboard?canceled=true`,
-      metadata: { userId, customUrl, siteId, plan, email },
-      currency: 'brl', // Certifique-se de que a moeda é BRL para Pix e Boleto
+      success_url: `${process.env.FRONTEND_URL}/confirmation?success=true&siteId=${siteId}`,
+      cancel_url: `${process.env.FRONTEND_URL}/criar?canceled=true`,
+      metadata: { userId: userId || null, customUrl, siteId, plan, email },
+      currency: 'brl',
     });
-    console.log('Sessão criada com sucesso. Session ID:', session.id);
-    console.log('URLs de redirecionamento:', { success_url: session.success_url, cancel_url: session.cancel_url });
 
     res.json({ sessionId: session.id });
   } catch (error) {
@@ -307,8 +271,6 @@ app.post('/create-checkout-session', async (req, res) => {
   }
 });
 
-// Novo endpoint para envio de e-mail manual
-// No arquivo backend (ex.: index.js)
 app.post('/send-email', async (req, res) => {
   console.log('Recebida requisição para /send-email');
   const { to, subject, body, isHtml = false } = req.body;
@@ -332,13 +294,11 @@ app.post('/send-email', async (req, res) => {
     from: 'administrador@amorempixels.com',
     to,
     subject,
-    ...(isHtml ? { html: body } : { text: body }), // Usa html se isHtml for true, senão text
+    ...(isHtml ? { html: body } : { text: body }),
   };
 
   try {
-    console.log('Enviando e-mail para:', to);
     await transporter.sendMail(mailOptions);
-    console.log('E-mail enviado com sucesso');
     res.status(200).json({ message: 'E-mail enviado com sucesso!' });
   } catch (error) {
     console.error('Erro ao enviar e-mail:', error);
