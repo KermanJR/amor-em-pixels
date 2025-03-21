@@ -10,10 +10,12 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 const app = express();
 const cors = require('cors');
 
+// Configurar o middleware para aceitar payloads maiores
 app.use(cors());
-app.use('/create-checkout-session', express.json());
-app.use('/send-email', express.json());
+app.use(express.json({ limit: '10mb' })); // Aumentar o limite para 10MB
+app.use(express.urlencoded({ limit: '10mb', extended: true })); // Para dados URL-encoded, se necessário
 
+// Endpoint webhook precisa de raw body
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   console.log('Recebida requisição para /webhook');
   const sig = req.headers['stripe-signature'];
@@ -323,7 +325,7 @@ app.post('/create-checkout-session', async (req, res) => {
         },
       ],
       mode: 'payment',
-      success_url: `${process.env.FRONTEND_URL}/confirmacao?success=true`,
+      success_url: `${process.env.FRONTEND_URL}/confirmation?success=true`,
       cancel_url: `${process.env.FRONTEND_URL}/criar?canceled=true`,
       metadata: {
         userId: userId || null,
