@@ -10,12 +10,10 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 const app = express();
 const cors = require('cors');
 
-// Configurar o middleware para aceitar payloads maiores
+// Middleware de CORS aplicado globalmente
 app.use(cors());
-app.use(express.json({ limit: '10mb' })); // Aumentar o limite para 10MB
-app.use(express.urlencoded({ limit: '10mb', extended: true })); // Para dados URL-encoded, se necessário
 
-// Endpoint webhook precisa de raw body
+// Endpoint webhook deve vir ANTES de qualquer middleware que parseie o corpo
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   console.log('Recebida requisição para /webhook');
   const sig = req.headers['stripe-signature'];
@@ -296,14 +294,15 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
   res.status(200).json({ received: true });
 });
 
+// Agora aplicamos os middlewares que parseiam o corpo APÓS o webhook
+app.use(express.json({ limit: '10mb' })); // Aumentar o limite para 10MB
+app.use(express.urlencoded({ limit: '10mb', extended: true })); // Para dados URL-encoded, se necessário
+
 app.post('/create-checkout-session', async (req, res) => {
   console.log('Recebida requisição para /create-checkout-session');
   const { userId, customUrl, plan, email, siteData } = req.body;
 
-  //const priceId = plan === 'basic' ? 'price_1R3j3ME7ALxB5NeWiBpb4IAo' : 'price_1R3j3rE7ALxB5NeW3ff6tK6c';
-
-  
-   const priceId = plan === 'basic' ? 'price_1R59ikE7ALxB5NeWgpRuc9QJ' : 'price_1R59ikE7ALxB5NeWgpRuc9QJ';
+  const priceId = plan === 'basic' ? 'price_1R59ikE7ALxB5NeWgpRuc9QJ' : 'price_1R59ikE7ALxB5NeWgpRuc9QJ';
   console.log('Price ID selecionado:', priceId);
 
   try {
@@ -328,8 +327,8 @@ app.post('/create-checkout-session', async (req, res) => {
         },
       ],
       mode: 'payment',
-      success_url: `${process.env.FRONTEND_URL}confirmation?success=true`,
-      cancel_url: `${process.env.FRONTEND_URL}criar?canceled=true`,
+      success_url: `${process.env.FRONTEND_URL}/confirmation?success=true`,
+      cancel_url: `${process.env.FRONTEND_URL}/criar?canceled=true`,
       metadata: {
         userId: userId || null,
         customUrl,
