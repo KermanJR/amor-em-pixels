@@ -246,10 +246,7 @@ app.post('/create-checkout-session', async (req, res) => {
   const { userId, customUrl, plan, siteId, email } = req.body;
 
   //PRODUÇÃO
-  //const priceId = plan === 'basic' ? 'price_1R3j3ME7ALxB5NeWiBpb4IAo' : 'price_1R3j3rE7ALxB5NeW3ff6tK6c';
-
-  //TESTE
-  const priceId = plan === 'basic' ? 'price_1R58JoE7ALxB5NeWzbQCbJLv' : 'price_1R58KJE7ALxB5NeWSP88W0mQ';
+  const priceId = plan === 'basic' ? 'price_1R3j3ME7ALxB5NeWiBpb4IAo' : 'price_1R3j3rE7ALxB5NeW3ff6tK6c'
 
   try {
     const session = await stripe.checkout.sessions.create({
