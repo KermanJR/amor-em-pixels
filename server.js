@@ -11,7 +11,6 @@ const app = express();
 const cors = require('cors');
 
 app.use(cors());
-
 app.use('/create-checkout-session', express.json());
 app.use('/send-email', express.json());
 
@@ -31,22 +30,84 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
   if (event.type === 'checkout.session.completed') {
     console.log('Evento checkout.session.completed recebido');
     const session = event.data.object;
-    const { userId, siteId, plan, customUrl, email } = session.metadata;
+    const { pendingSiteId, plan, customUrl, email } = session.metadata;
 
-    const { data: siteData, error: siteError } = await supabase
+    // Buscar os dados do site temporário
+    const { data: pendingSite, error: pendingError } = await supabase
+      .from('pending_sites')
+      .select('site_data')
+      .eq('id', pendingSiteId)
+      .single();
+
+    if (pendingError || !pendingSite) {
+      console.error('Erro ao buscar dados do site temporário:', pendingError);
+      return res.status(500).send('Erro ao buscar dados do site temporário');
+    }
+
+    const siteData = pendingSite.site_data;
+
+    // Fazer o upload das fotos
+    const photoUrls = await Promise.all(
+      siteData.media.photos.map(async (photo, index) => {
+        const base64Data = photo.data.replace(/^data:[^;]+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        const { data, error } = await supabase.storage
+          .from('media')
+          .upload(`${siteData.custom_url}/photos/photo-${index}-${Date.now()}.${photo.name.split('.').pop()}`, buffer, {
+            contentType: photo.data.split(';')[0].split(':')[1],
+          });
+        if (error) throw new Error(`Erro ao fazer upload da foto ${index}: ${error.message}`);
+        return supabase.storage.from('media').getPublicUrl(data.path).data.publicUrl;
+      })
+    );
+
+    // Fazer o upload das músicas
+    const musicUrls = await Promise.all(
+      siteData.media.musics.map(async (music, index) => {
+        const base64Data = music.data.replace(/^data:[^;]+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        const { data, error } = await supabase.storage
+          .from('media')
+          .upload(`${siteData.custom_url}/musics/music-${index}-${Date.now()}.${music.name.split('.').pop()}`, buffer, {
+            contentType: music.data.split(';')[0].split(':')[1],
+          });
+        if (error) throw new Error(`Erro ao fazer upload da música ${index}: ${error.message}`);
+        return supabase.storage.from('media').getPublicUrl(data.path).data.publicUrl;
+      })
+    );
+
+    // Criar o site na tabela sites
+    const finalSiteData = {
+      custom_url: siteData.custom_url,
+      user_id: siteData.user_id,
+      form_data: siteData.form_data,
+      plan: siteData.plan,
+      media: {
+        photos: photoUrls,
+        musics: musicUrls,
+        spotifyLink: siteData.media.spotifyLink,
+      },
+      created_at: siteData.created_at,
+      expiration_date: siteData.expiration_date,
+      status: 'active', // Agora o status já é active, pois o pagamento foi confirmado
+      template_type: siteData.template_type,
+      password: siteData.password,
+      email: siteData.email,
+    };
+
+    const { data: site, error: siteError } = await supabase
       .from('sites')
-      .select('form_data, password, custom_url, media')
-      .eq('id', siteId)
+      .insert([finalSiteData])
+      .select('id')
       .single();
 
     if (siteError) {
-      console.error('Erro ao buscar dados do site:', siteError);
-      return res.status(500).send('Erro ao buscar dados do site');
+      console.error('Erro ao criar o site:', siteError);
+      return res.status(500).send('Erro ao criar o site');
     }
 
-    const { form_data, password, custom_url, media } = siteData;
-    const siteUrl = `${process.env.FRONTEND_URL}/${customUrl}`;
-    const selectedPhoto = media.photos && media.photos.length > 0 ? media.photos[0] : 'https://via.placeholder.com/300x200?text=Sem+Foto';
+    const siteUrl = `${process.env.FRONTEND_URL}/${siteData.custom_url}`;
+    const selectedPhoto = photoUrls.length > 0 ? photoUrls[0] : 'https://via.placeholder.com/300x200?text=Sem+Foto';
     const selectedColor = '#FDF8E3';
 
     const qrCodeUrl = await QRCode.toDataURL(siteUrl);
@@ -57,7 +118,7 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Card Digital Premium - ${form_data.coupleName}</title>
+        <title>Card Digital Premium - ${siteData.form_data.coupleName}</title>
         <style>
           body {
             background-color: ${selectedColor};
@@ -166,10 +227,10 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
       <body>
         <div class="card">
           <img class="photo" src="${selectedPhoto}" alt="Foto do Casal" />
-          <h1>${form_data.coupleName}</h1>
-          <p class="message">"${form_data.message}"</p>
+          <h1>${siteData.form_data.coupleName}</h1>
+          <p class="message">"${siteData.form_data.message}"</p>
           <div class="details">
-            <p>Início: ${new Date(form_data.relationshipStartDate).toLocaleDateString('pt-BR')}</p>
+            <p>Início: ${new Date(siteData.form_data.relationshipStartDate).toLocaleDateString('pt-BR')}</p>
           </div>
           <div class="qr-code">
             <img src="${qrCodeUrl}" alt="QR Code" />
@@ -207,12 +268,12 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
       html: `
         <h1>Seu Card Digital está pronto!</h1>
         <p>Acesse seu Card Digital aqui: <a href="${siteUrl}">${siteUrl}</a></p>
-        <p><strong>Senha para acesso:</strong> ${password}</p>
+        <p><strong>Senha para acesso:</strong> ${siteData.password}</p>
         ${plan === 'premium' ? '<p>Baixe seu PDF personalizado anexado a este e-mail.</p>' : ''}
       `,
       attachments: plan === 'premium'
         ? [{
-            filename: `${customUrl}_card.pdf`,
+            filename: `${siteData.custom_url}_card.pdf`,
             content: pdfBuffer,
             contentType: 'application/pdf',
           }]
@@ -222,18 +283,10 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
     await transporter.sendMail(mailOptions);
     console.log('E-mail enviado com sucesso para:', email);
 
-    const { error: updateError } = await supabase
-      .from('sites')
-      .update({ status: 'active' })
-      .eq('id', siteId);
+    // Deletar o registro temporário
+    await supabase.from('pending_sites').delete().eq('id', pendingSiteId);
 
-    if (updateError) {
-      console.error('Erro ao atualizar status do site:', updateError);
-      return res.status(500).send('Erro ao atualizar o site');
-    }
-
-    // Removido o upsert de user_plans, pois não há usuário logado
-    console.log(`Site ${siteId} ativado com sucesso`);
+    console.log(`Site criado com sucesso: ${site.id}`);
   } else {
     console.log(`Evento ignorado: ${event.type}`);
   }
@@ -243,12 +296,24 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 
 app.post('/create-checkout-session', async (req, res) => {
   console.log('Recebida requisição para /create-checkout-session');
-  const { userId, customUrl, plan, siteId, email } = req.body;
+  const { userId, customUrl, plan, email, siteData } = req.body;
 
-  //PRODUÇÃO
-  const priceId = plan === 'basic' ? 'price_1R3j3ME7ALxB5NeWiBpb4IAo' : 'price_1R3j3rE7ALxB5NeW3ff6tK6c'
+  const priceId = plan === 'basic' ? 'price_1R3j3ME7ALxB5NeWiBpb4IAo' : 'price_1R3j3rE7ALxB5NeW3ff6tK6c';
+  console.log('Price ID selecionado:', priceId);
 
   try {
+    // Salvar os dados do site temporariamente
+    const { data: pendingSite, error: pendingError } = await supabase
+      .from('pending_sites')
+      .insert([{ site_data: siteData }])
+      .select('id')
+      .single();
+
+    if (pendingError) {
+      console.error('Erro ao salvar dados temporários:', pendingError);
+      return res.status(500).json({ error: 'Erro ao salvar dados temporários', details: pendingError.message });
+    }
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -258,9 +323,15 @@ app.post('/create-checkout-session', async (req, res) => {
         },
       ],
       mode: 'payment',
-      success_url: `${process.env.FRONTEND_URL}/confirmation?success=true&siteId=${siteId}`,
+      success_url: `${process.env.FRONTEND_URL}/confirmacao?success=true`,
       cancel_url: `${process.env.FRONTEND_URL}/criar?canceled=true`,
-      metadata: { userId: userId || null, customUrl, siteId, plan, email },
+      metadata: {
+        userId: userId || null,
+        customUrl,
+        plan,
+        email,
+        pendingSiteId: pendingSite.id,
+      },
       currency: 'brl',
     });
 
