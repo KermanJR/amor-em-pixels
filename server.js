@@ -262,23 +262,212 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
     }
 
     const mailOptions = {
-      from: 'administrador@amorempixels.com',
-      to: email,
-      subject: 'Seu Card Digital foi Criado com Sucesso!',
-      html: `
-        <h1>Seu Card Digital está pronto!</h1>
-        <p>Acesse seu Card Digital aqui: <a href="${siteUrl}">${siteUrl}</a></p>
-        <p><strong>Senha para acesso:</strong> ${siteData.password}</p>
-        ${plan === 'premium' ? '<p>Baixe seu PDF personalizado anexado a este e-mail.</p>' : ''}
-      `,
-      attachments: plan === 'premium'
-        ? [{
-            filename: `${siteData.custom_url}_card.pdf`,
-            content: pdfBuffer,
-            contentType: 'application/pdf',
-          }]
-        : [],
-    };
+  from: 'administrador@amorempixels.com',
+  to: email,
+  subject: 'Seu Card Digital foi Criado com Sucesso! 💕',
+  html: `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Seu Card Digital - Amor em Pixels</title>
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        body {
+          font-family: 'Georgia', serif;
+          background-color: #f5f5f5;
+          color: #333;
+          line-height: 1.6;
+          padding: 20px;
+        }
+        .container {
+          max-width: 600px;
+          margin: 0 auto;
+          background: linear-gradient(135deg, #fdf8e3 0%, #fff5f5 100%);
+          border-radius: 16px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+          overflow: hidden;
+          position: relative;
+        }
+        .container::before {
+          content: '';
+          position: absolute;
+          top: -50px;
+          left: -50px;
+          width: 150px;
+          height: 150px;
+          background: radial-gradient(circle, rgba(255, 215, 0, 0.2) 0%, transparent 70%);
+          z-index: 1;
+        }
+        .container::after {
+          content: '';
+          position: absolute;
+          bottom: -50px;
+          right: -50px;
+          width: 150px;
+          height: 150px;
+          background: radial-gradient(circle, rgba(255, 105, 180, 0.2) 0%, transparent 70%);
+          z-index: 1;
+        }
+        .header {
+          background: linear-gradient(90deg, #ff6f91 0%, #ffcccb 100%);
+          padding: 30px;
+          text-align: center;
+          position: relative;
+          z-index: 2;
+        }
+        .header h1 {
+          font-size: 28px;
+          color: #fff;
+          font-weight: bold;
+          text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+        }
+        .header p {
+          font-size: 16px;
+          color: #fff;
+          margin-top: 8px;
+          opacity: 0.9;
+        }
+        .content {
+          padding: 40px 30px;
+          text-align: center;
+          position: relative;
+          z-index: 2;
+        }
+        .content h2 {
+          font-size: 24px;
+          color: #872133;
+          margin-bottom: 20px;
+          font-weight: bold;
+        }
+        .content p {
+          font-size: 16px;
+          color: #6b1a28;
+          margin-bottom: 20px;
+        }
+        .content .highlight {
+          background-color: #fff5f5;
+          padding: 15px;
+          border-radius: 8px;
+          margin-bottom: 20px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+        .content .highlight p {
+          font-size: 16px;
+          color: #333;
+        }
+        .content .highlight strong {
+          color: #872133;
+        }
+        .content a {
+          display: inline-block;
+          background: linear-gradient(90deg, #ff6f91 0%, #ffcccb 100%);
+          color: #fff;
+          padding: 12px 24px;
+          border-radius: 25px;
+          text-decoration: none;
+          font-size: 16px;
+          font-weight: bold;
+          transition: transform 0.2s ease;
+          margin: 10px 0;
+        }
+        .content a:hover {
+          transform: scale(1.05);
+        }
+        .footer {
+          background-color: #fff5f5;
+          padding: 20px;
+          text-align: center;
+          font-size: 14px;
+          color: #6b1a28;
+          border-top: 1px solid rgba(0, 0, 0, 0.05);
+          position: relative;
+          z-index: 2;
+        }
+        .footer p {
+          margin: 0;
+        }
+        .footer a {
+          color: #ff6f91;
+          text-decoration: none;
+          font-weight: bold;
+        }
+        .footer a:hover {
+          text-decoration: underline;
+        }
+        @media (max-width: 600px) {
+          .container {
+            margin: 0 10px;
+          }
+          .header h1 {
+            font-size: 24px;
+          }
+          .content {
+            padding: 30px 20px;
+          }
+          .content h2 {
+            font-size: 20px;
+          }
+          .content p {
+            font-size: 14px;
+          }
+          .content a {
+            padding: 10px 20px;
+            font-size: 14px;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Seu Card Digital Está Pronto! 💕</h1>
+          <p>Amor em Pixels - Celebre sua história de amor</p>
+        </div>
+        <div class="content">
+          <h2>Olá, ${siteData.form_data.coupleName}!</h2>
+          <p>Estamos felizes em informar que seu Card Digital foi criado com sucesso! Agora você pode compartilhar sua história de amor de uma forma única e especial.</p>
+          <div class="highlight">
+            <p><strong>Link do seu Card:</strong></p>
+            <a href="${siteUrl}" target="_blank">Acesse aqui: ${siteUrl}</a>
+          </div>
+          <div class="highlight">
+            <p><strong>Senha para acesso:</strong> ${siteData.password}</p>
+          </div>
+          ${
+            plan === 'premium'
+              ? `
+                <div class="highlight">
+                  <p>Como você escolheu o plano Premium, anexamos ao e-mail o PDF personalizado do seu Card Digital. Baixe e guarde com carinho! 💌</p>
+                </div>
+              `
+              : ''
+          }
+          <p>Se precisar de ajuda ou quiser personalizar ainda mais, entre em contato conosco!</p>
+        </div>
+        <div class="footer">
+          <p>Feito com 💖 por <a href="https://amorempixels.com" target="_blank">Amor em Pixels</a></p>
+          <p>© ${new Date().getFullYear()} - Todos os direitos reservados</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `,
+  attachments: plan === 'premium'
+    ? [
+        {
+          filename: `${siteData.custom_url}_card.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf',
+        },
+      ]
+    : [],
+};
 
     await transporter.sendMail(mailOptions);
     console.log('E-mail enviado com sucesso para:', email);
